@@ -17,6 +17,12 @@ export function b2bOrder () {
   return ({ body }: Request, res: Response, next: NextFunction) => {
     if (utils.isChallengeEnabled(challenges.rceChallenge) || utils.isChallengeEnabled(challenges.rceOccupyChallenge)) {
       const orderLinesData = body.orderLinesData || ''
+
+      if (!isSafeOrderLines(orderLinesData)) {
+        res.status(400)
+        return next(new Error('Sanity check failed: Invalid orderLinesData.'))
+      }
+
       try {
         const sandbox = { safeEval, orderLinesData }
         vm.createContext(sandbox)
@@ -44,4 +50,39 @@ export function b2bOrder () {
   function dateTwoWeeksFromNow () {
     return new Date(new Date().getTime() + (14 * 24 * 60 * 60 * 1000)).toISOString()
   }
+}
+
+function isSafeOrderLines (data: string): boolean {
+  if (data.includes('\\')) {
+    return false
+  }
+  if (/([a-zA-Z0-9_$)\]\}'"{\/])\s*\[/.test(data)) {
+    return false
+  }
+  const forbiddenKeywords = [
+    /\bconstructor\b/i,
+    /\bprototype\b/i,
+    /\b__proto__\b/i,
+    /\bprocess\b/i,
+    /\brequire\b/i,
+    /\bexec\b/i,
+    /\bexecSync\b/i,
+    /\bspawn\b/i,
+    /\bchild_process\b/i,
+    /\bglobal\b/i,
+    /\bglobalThis\b/i,
+    /\bmainModule\b/i,
+    /\bFunction\b/i,
+    /\beval\b/i,
+    /\bimport\b/i,
+    /\bmodule\b/i,
+    /\bsetTimeout\b/i,
+    /\bsetInterval\b/i
+  ]
+  for (const pattern of forbiddenKeywords) {
+    if (pattern.test(data)) {
+      return false
+    }
+  }
+  return true
 }
